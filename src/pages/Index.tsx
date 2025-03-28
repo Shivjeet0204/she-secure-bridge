@@ -4,6 +4,8 @@ import Header from "@/components/layout/Header";
 import SOSButton from "@/components/sos/SOSButton";
 import ThreatDetection from "@/components/safety/ThreatDetection";
 import FeatureCard from "@/components/home/FeatureCard";
+import { toast } from "@/hooks/use-toast";
+import { useEffect } from "react";
 
 const features = [
   {
@@ -29,6 +31,11 @@ const features = [
 ];
 
 const Index = () => {
+  useEffect(() => {
+    // Check if the app is running properly
+    console.log("Index page loaded successfully");
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
