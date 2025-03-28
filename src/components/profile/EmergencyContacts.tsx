@@ -13,25 +13,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-
-interface Contact {
-  id: number;
-  name: string;
-  phone: string;
-  email: string;
-  relationship: string;
-}
+import { Checkbox } from "@/components/ui/checkbox";
+import { useEmergencyContacts, EmergencyContact } from "@/hooks/use-emergency-contacts";
 
 const EmergencyContacts = () => {
-  const [contacts, setContacts] = useState<Contact[]>([
-    {
-      id: 1,
-      name: "Jane Smith",
-      phone: "555-123-4567",
-      email: "jane@example.com",
-      relationship: "Sister",
-    },
-  ]);
+  const { contacts, addContact, updateContact, deleteContact, toggleContactSelection } = useEmergencyContacts();
   const [showAddForm, setShowAddForm] = useState(false);
   const [newContact, setNewContact] = useState({
     name: "",
@@ -52,24 +38,18 @@ const EmergencyContacts = () => {
       return;
     }
 
-    const contact = {
-      id: Date.now(),
-      ...newContact,
-    };
-
-    setContacts([...contacts, contact]);
+    addContact(newContact);
     setNewContact({ name: "", phone: "", email: "", relationship: "" });
     setShowAddForm(false);
     
     toast({
       title: "Contact Added",
-      description: `${contact.name} has been added to your emergency contacts.`,
+      description: `${newContact.name} has been added to your emergency contacts.`,
     });
   };
 
   const handleDeleteContact = (id: number) => {
-    const updatedContacts = contacts.filter(contact => contact.id !== id);
-    setContacts(updatedContacts);
+    deleteContact(id);
     
     toast({
       title: "Contact Removed",
@@ -97,10 +77,22 @@ const EmergencyContacts = () => {
                 key={contact.id} 
                 className="flex items-start justify-between p-3 border rounded-md"
               >
-                <div className="flex gap-3">
-                  <UserCircle className="h-10 w-10 text-muted-foreground" />
+                <div className="flex items-start gap-3">
+                  <Checkbox 
+                    id={`select-${contact.id}`}
+                    checked={contact.selected}
+                    onCheckedChange={() => toggleContactSelection(contact.id)}
+                    className="mt-1"
+                  />
                   <div>
-                    <p className="font-medium">{contact.name}</p>
+                    <div className="flex items-center">
+                      <p className="font-medium">{contact.name}</p>
+                      {contact.selected && (
+                        <span className="ml-2 text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">
+                          SOS Alert
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-muted-foreground">{contact.relationship}</p>
                     <div className="flex items-center gap-2 mt-1 text-sm">
                       <Phone className="h-3 w-3" /> 
