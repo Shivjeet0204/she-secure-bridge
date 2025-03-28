@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { AlertCircle, UserCheck, UserX } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
@@ -14,26 +13,49 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useEmergencyContacts } from "@/hooks/use-emergency-contacts";
+import { sendSMS, sendEmail, getCurrentLocation, createGoogleMapsLink } from "@/utils/messagingService";
+import { toast } from "@/hooks/use-toast";
 
 const SOSButton = () => {
   const [sosActive, setSosActive] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showContactsDialog, setShowContactsDialog] = useState(false);
   const [countdown, setCountdown] = useState(5);
+  const [isSending, setIsSending] = useState(false);
+  const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
   const { toast } = useToast();
   const { contacts, toggleContactSelection, getSelectedContacts } = useEmergencyContacts();
 
+  useEffect(() => {
+    const fetchLocation = async () => {
+      try {
+        const position = await getCurrentLocation();
+        setUserLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        });
+      } catch (error) {
+        console.error("Error getting location:", error);
+        toast({
+          title: "Location Error",
+          description: "Unable to get your current location. Location will not be shared in alerts.",
+          variant: "destructive",
+        });
+      }
+    };
+    
+    fetchLocation();
+  }, []);
+
   const handleSOSClick = () => {
-    // If we have contacts, show confirmation dialog immediately
     if (contacts.length > 0 && getSelectedContacts().length > 0) {
       setShowConfirmDialog(true);
     } else {
-      // If no contacts or none selected, show contacts selection dialog
       setShowContactsDialog(true);
     }
   };
 
-  const activateSOS = () => {
+  const activateSOS = async () => {
     const selectedContacts = getSelectedContacts();
     
     if (selectedContacts.length === 0) {
@@ -48,8 +70,8 @@ const SOSButton = () => {
     
     setSosActive(true);
     setShowConfirmDialog(false);
+    setIsSending(true);
     
-    // Simulate SOS activation
     let countdownTimer = 5;
     const timer = setInterval(() => {
       countdownTimer -= 1;
@@ -57,17 +79,79 @@ const SOSButton = () => {
       
       if (countdownTimer <= 0) {
         clearInterval(timer);
-        
-        // Simulate sending alert to selected emergency contacts
-        setTimeout(() => {
-          toast({
-            title: "Alert Sent",
-            description: `Alert sent to ${selectedContacts.length} emergency contact${selectedContacts.length > 1 ? 's' : ''}.`,
-            duration: 5000,
-          });
-        }, 500);
+        sendEmergencyAlerts(selectedContacts);
       }
     }, 1000);
+  };
+
+  const sendEmergencyAlerts = async (selectedContacts) => {
+    try {
+      if (!userLocation) {
+        try {
+          const position = await getCurrentLocation();
+          setUserLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+        } catch (error) {
+          console.error("Error getting location during alert:", error);
+        }
+      }
+
+      const locationText = userLocation 
+        ? `\nMy current location: ${createGoogleMapsLink(userLocation.latitude, userLocation.longitude)}`
+        : "\nLocation information is not available.";
+
+      const messageText = `EMERGENCY SOS ALERT: I need help immediately. This is an emergency.${locationText}`;
+      
+      const messagePromises = selectedContacts.map(async (contact) => {
+        const messageContent = {
+          recipientPhone: contact.phone,
+          recipientEmail: contact.email,
+          message: messageText,
+          location: userLocation
+        };
+
+        const smsResult = await sendSMS(messageContent);
+        
+        let emailResult = false;
+        if (contact.email) {
+          emailResult = await sendEmail(messageContent);
+        }
+
+        return { contact, smsResult, emailResult };
+      });
+
+      const results = await Promise.all(messagePromises);
+      
+      const successfulSends = results.filter(r => r.smsResult || r.emailResult).length;
+      
+      setIsSending(false);
+      
+      if (successfulSends > 0) {
+        toast({
+          title: "Alert Sent",
+          description: `Alert sent to ${successfulSends} emergency contact${successfulSends > 1 ? 's' : ''}.`,
+          duration: 5000,
+        });
+      } else {
+        toast({
+          title: "Alert Sending Failed",
+          description: "Unable to send alerts. Please try again or contact emergency services directly.",
+          variant: "destructive",
+          duration: 5000,
+        });
+      }
+    } catch (error) {
+      console.error("Error sending alerts:", error);
+      setIsSending(false);
+      toast({
+        title: "Alert Sending Failed",
+        description: "An error occurred while sending alerts. Please try again.",
+        variant: "destructive",
+        duration: 5000,
+      });
+    }
   };
 
   const cancelSOS = () => {
@@ -109,7 +193,6 @@ const SOSButton = () => {
         SOS
       </button>
 
-      {/* Contact Selection Dialog */}
       <Dialog open={showContactsDialog} onOpenChange={setShowContactsDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -167,7 +250,6 @@ const SOSButton = () => {
         </DialogContent>
       </Dialog>
 
-      {/* SOS Confirmation Dialog */}
       <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -212,7 +294,6 @@ const SOSButton = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Active SOS Dialog */}
       <Dialog open={sosActive} onOpenChange={setSosActive}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -226,7 +307,7 @@ const SOSButton = () => {
                 </span>
               ) : (
                 <span className="text-lg font-semibold">
-                  Alert sent! Help is on the way.
+                  {isSending ? "Sending alerts..." : "Alert sent! Help is on the way."}
                 </span>
               )}
             </DialogDescription>
@@ -241,6 +322,7 @@ const SOSButton = () => {
               variant="outline" 
               onClick={cancelSOS}
               className="w-full"
+              disabled={countdown <= 0 && isSending}
             >
               Cancel SOS
             </Button>
